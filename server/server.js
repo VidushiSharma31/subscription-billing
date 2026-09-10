@@ -3,7 +3,9 @@ require("dotenv").config();
 const express = require("express");
 
 const connectDatabase = require("./config/db");
+
 const authRoutes = require("./routes/authRoutes");
+const subscriptionRoutes = require("./routes/subscriptionRoutes");
 
 const app = express();
 
@@ -18,6 +20,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
 
 const startServer = async () => {
     await connectDatabase();
