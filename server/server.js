@@ -6,6 +6,7 @@ const connectDatabase = require("./config/db");
 
 const authRoutes = require("./routes/authRoutes");
 const subscriptionRoutes = require("./routes/subscriptionRoutes");
+const invoiceRoutes = require("./routes/invoiceRoutes");
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/invoices", invoiceRoutes);
 
 const startServer = async () => {
     await connectDatabase();
