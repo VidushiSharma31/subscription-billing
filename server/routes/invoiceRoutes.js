@@ -9,7 +9,8 @@ const {
     addInvoiceNote,
     getInvoiceNotes, 
     createCreditNote,
-    getCreditNotes
+    getCreditNotes,
+    generateCurrentPeriodInvoices
 } = require("../controllers/invoiceController");
 
 const authenticateUser = require("../middleware/authMiddleware");
@@ -71,6 +72,13 @@ router.post(
     authenticateUser,
     authorizeRoles("billing_admin"),
     createCreditNote
+);
+
+router.post(
+    "/generate-current-period",
+    authenticateUser,
+    authorizeRoles("billing_admin"),
+    generateCurrentPeriodInvoices
 );
 
 module.exports = router;
