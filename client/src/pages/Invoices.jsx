@@ -779,6 +779,17 @@ const InvoiceDetailsModal = ({
         invoice.dueDate?.slice(0, 10) || ""
     );
 
+    const [confirmingVoid, setConfirmingVoid] = useState(false);
+    const [voidReason, setVoidReason] = useState("");
+
+    const [editingDraft, setEditingDraft] = useState(false);
+    const [draftForm, setDraftForm] = useState({
+        periodStart: invoice.periodStart?.slice(0, 10) || "",
+        periodEnd: invoice.periodEnd?.slice(0, 10) || "",
+        amount: invoice.amount ?? "",
+        dueDate: invoice.dueDate?.slice(0, 10) || "",
+    });
+
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
 
@@ -837,7 +848,9 @@ const InvoiceDetailsModal = ({
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({ status }),
+                    body: JSON.stringify(
+                        reason ? { status, reason } : { status }
+                    ),
                 }
             );
 
@@ -896,6 +909,47 @@ const InvoiceDetailsModal = ({
         }
     };
 
+    const saveDraftEdit = async (e) => {
+        e.preventDefault();
+
+        try {
+            setSaving(true);
+            setError("");
+
+            const response = await fetch(
+                `http://localhost:5000/api/invoices/${invoice._id}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        periodStart: draftForm.periodStart,
+                        periodEnd: draftForm.periodEnd,
+                        amount: Number(draftForm.amount),
+                        dueDate: draftForm.dueDate,
+                    }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to update invoice"
+                );
+            }
+
+            await onUpdated();
+            setEditingDraft(false);
+        } catch (error) {
+            setError(error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const addNote = async (e) => {
         e.preventDefault();
 
@@ -938,7 +992,7 @@ const InvoiceDetailsModal = ({
         }
     };
 
-    const canEditDueDate = invoice.status !== "paid";
+    const canEditDueDate = invoice.status === "issued";
 
     return (
         <Modal
@@ -986,6 +1040,111 @@ const InvoiceDetailsModal = ({
                     />
                 </div>
 
+                {invoice.status === "draft" && (
+                    <div>
+                        <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-900">
+                                Edit Invoice
+                            </h3>
+
+                            {!editingDraft && (
+                                <button
+                                    onClick={() => setEditingDraft(true)}
+                                    className="text-sm font-medium text-slate-700 underline"
+                                >
+                                    Edit
+                                </button>
+                            )}
+                        </div>
+
+                        {editingDraft && (
+                            <form onSubmit={saveDraftEdit} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <FormField label="Period Start">
+                                        <input
+                                            required
+                                            type="date"
+                                            value={draftForm.periodStart}
+                                            onChange={(e) =>
+                                                setDraftForm({
+                                                    ...draftForm,
+                                                    periodStart: e.target.value,
+                                                })
+                                            }
+                                            className="form-input"
+                                        />
+                                    </FormField>
+
+                                    <FormField label="Period End">
+                                        <input
+                                            required
+                                            type="date"
+                                            value={draftForm.periodEnd}
+                                            onChange={(e) =>
+                                                setDraftForm({
+                                                    ...draftForm,
+                                                    periodEnd: e.target.value,
+                                                })
+                                            }
+                                            className="form-input"
+                                        />
+                                    </FormField>
+                                </div>
+
+                                <FormField label="Amount">
+                                    <input
+                                        required
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={draftForm.amount}
+                                        onChange={(e) =>
+                                            setDraftForm({
+                                                ...draftForm,
+                                                amount: e.target.value,
+                                            })
+                                        }
+                                        className="form-input"
+                                    />
+                                </FormField>
+
+                                <FormField label="Due Date">
+                                    <input
+                                        required
+                                        type="date"
+                                        value={draftForm.dueDate}
+                                        onChange={(e) =>
+                                            setDraftForm({
+                                                ...draftForm,
+                                                dueDate: e.target.value,
+                                            })
+                                        }
+                                        className="form-input"
+                                    />
+                                </FormField>
+
+                                <div className="flex justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingDraft(false)}
+                                        className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+                                    >
+                                        Cancel
+                                    </button>
+
+                                    <button
+                                        type="submit"
+                                        disabled={saving}
+                                        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                                    >
+                                        {saving ? "Saving..." : "Save"}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+                    </div>
+                )}
+
                 {/* Admin actions */}
                 {isAdmin && invoice.status !== "paid" && (
                     <div>
@@ -1006,9 +1165,7 @@ const InvoiceDetailsModal = ({
                                     </ActionButton>
 
                                     <ActionButton
-                                        onClick={() =>
-                                            updateStatus("void")
-                                        }
+                                        onClick={() => setConfirmingVoid(true)}
                                         disabled={saving}
                                         secondary
                                     >
@@ -1029,9 +1186,7 @@ const InvoiceDetailsModal = ({
                                     </ActionButton>
 
                                     <ActionButton
-                                        onClick={() =>
-                                            updateStatus("void")
-                                        }
+                                        onClick={() => setConfirmingVoid(true)}
                                         disabled={saving}
                                         secondary
                                     >
@@ -1039,6 +1194,48 @@ const InvoiceDetailsModal = ({
                                     </ActionButton>
                                 </>
                             )}
+                        </div>
+                    </div>      
+                )}
+
+                {confirmingVoid && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                        <p className="mb-2 text-sm font-medium text-red-900">
+                            Void this invoice
+                        </p>
+
+                        <textarea
+                            required
+                            rows="2"
+                            value={voidReason}
+                            onChange={(e) => setVoidReason(e.target.value)}
+                            placeholder="Reason for voiding this invoice..."
+                            className="form-input mb-3"
+                        />
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => {
+                                    setConfirmingVoid(false);
+                                    setVoidReason("");
+                                }}
+                                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    if (!voidReason.trim()) return;
+                                    updateStatus("void", voidReason.trim());
+                                    setConfirmingVoid(false);
+                                    setVoidReason("");
+                                }}
+                                disabled={saving || !voidReason.trim()}
+                                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                            >
+                                {saving ? "Voiding..." : "Confirm Void"}
+                            </button>
                         </div>
                     </div>
                 )}
@@ -1170,6 +1367,12 @@ const InvoiceDetailsModal = ({
                                         <span className="font-medium text-slate-700">
                                             {item.newStatus}
                                         </span>
+
+                                        {item.reason && (
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            Reason: {item.reason}
+                                        </p>
+                                    )}
                                     </div>
 
                                     <div className="text-xs text-slate-400">
