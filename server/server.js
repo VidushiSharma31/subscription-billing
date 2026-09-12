@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const cors = require("cors");
 
 const connectDatabase = require("./config/db");
 
@@ -10,6 +11,10 @@ const invoiceRoutes = require("./routes/invoiceRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 
 const app = express();
+
+app.use(cors({
+    origin: "http://localhost:5173"
+}));
 
 const PORT = process.env.PORT || 5000;
 
