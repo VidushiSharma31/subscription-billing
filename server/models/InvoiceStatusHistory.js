@@ -20,6 +20,12 @@ const invoiceStatusHistorySchema = new mongoose.Schema(
             required: true
         },
 
+        // Only populated for void — other transitions don't need one.
+        reason: {
+            type: String,
+            trim: true
+        },
+
         changedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",

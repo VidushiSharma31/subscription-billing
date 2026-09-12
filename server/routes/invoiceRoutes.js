@@ -11,13 +11,20 @@ const {
     createCreditNote,
     getCreditNotes,
     generateCurrentPeriodInvoices,
-    updateInvoiceDueDate
+    updateInvoiceDueDate,
+    updateInvoiceDraft
 } = require("../controllers/invoiceController");
 
 const authenticateUser = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
 
 const router = express.Router();
+
+router.put(
+    "/:id",
+    authenticateUser,
+    updateInvoiceDraft
+);
 
 router.post(
     "/",

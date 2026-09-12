@@ -352,7 +352,6 @@ const getInvoices = async (req, res) => {
     }
 };
 
-
 const updateInvoiceStatus = async (req, res) => {
     try {
         const { status } = req.body;
@@ -360,6 +359,12 @@ const updateInvoiceStatus = async (req, res) => {
         if (!["draft", "issued", "paid", "void"].includes(status)) {
             return res.status(400).json({
                 message: "Invalid invoice status"
+            });
+        }
+
+        if (status === "void" && (!reason || !reason.trim())) {
+            return res.status(400).json({
+                message: "A reason is required to void an invoice"
             });
         }
 
@@ -411,7 +416,8 @@ const updateInvoiceStatus = async (req, res) => {
             invoice: invoice._id,
             oldStatus: currentStatus,
             newStatus: status,
-            changedBy: req.user.userId
+            changedBy: req.user.userId,
+            reason: status === "void" ? reason.trim() : undefined
         });
 
         res.json({
@@ -420,6 +426,76 @@ const updateInvoiceStatus = async (req, res) => {
         });
     } catch (error) {
         console.error("Update invoice status error:", error);
+
+        res.status(500).json({
+            message: "Something went wrong"
+        });
+    }
+};
+
+const updateInvoiceDraft = async (req, res) => {
+    try {
+        const invoice = await getAccessibleInvoice(req.params.id, req.user);
+
+        if (!invoice) {
+            return res.status(404).json({
+                message: "Invoice not found"
+            });
+        }
+
+        if (invoice.status !== "draft") {
+            return res.status(400).json({
+                message: "Only draft invoices can be edited this way — an issued invoice's period and amount are locked, only its due date can change"
+            });
+        }
+
+        const { periodStart, periodEnd, amount, dueDate } = req.body;
+
+        if (!periodStart || !periodEnd || amount === undefined || !dueDate) {
+            return res.status(400).json({
+                message: "All invoice fields are required"
+            });
+        }
+
+        if (typeof amount !== "number" || amount < 0) {
+            return res.status(400).json({
+                message: "Amount must be a non-negative number"
+            });
+        }
+
+        const start = new Date(periodStart);
+        const end = new Date(periodEnd);
+        const due = new Date(dueDate);
+
+        if (
+            Number.isNaN(start.getTime()) ||
+            Number.isNaN(end.getTime()) ||
+            Number.isNaN(due.getTime())
+        ) {
+            return res.status(400).json({
+                message: "Invalid date provided"
+            });
+        }
+
+        if (start >= end) {
+            return res.status(400).json({
+                message: "Period end must be after period start"
+            });
+        }
+
+        invoice.periodStart = start;
+        invoice.periodEnd = end;
+        invoice.amount = amount;
+        invoice.dueDate = due;
+
+        await invoice.save();
+
+        res.json({
+            message: "Invoice updated successfully",
+            invoice
+        });
+    } catch (error) {
+        console.error("Update invoice draft error:", error);
 
         res.status(500).json({
             message: "Something went wrong"
@@ -852,5 +928,6 @@ const generateCurrentPeriodInvoices = async (req, res) => {
 };
 
 module.exports = {
-    createInvoice, getInvoices, updateInvoiceStatus, getInvoice, getInvoiceHistory, addInvoiceNote, getInvoiceNotes, createCreditNote, getCreditNotes, generateCurrentPeriodInvoices, updateInvoiceDueDate
+    createInvoice, getInvoices, updateInvoiceStatus, getInvoice, getInvoiceHistory, addInvoiceNote, getInvoiceNotes, createCreditNote, getCreditNotes, generateCurrentPeriodInvoices, updateInvoiceDueDate,
+    updateInvoiceDraft
 };
