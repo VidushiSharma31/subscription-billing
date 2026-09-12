@@ -3,46 +3,41 @@ const express = require("express");
 const {
     createInvoice,
     getInvoices,
-    updateInvoiceStatus,
     getInvoice,
-    getInvoiceHistory,
-    addInvoiceNote,
-    getInvoiceNotes, 
-    createCreditNote,
-    getCreditNotes,
-    generateCurrentPeriodInvoices,
-    updateInvoiceDueDate,
-    updateInvoiceDraft
+    updateInvoiceDraft,
+    updateInvoiceDueDate
 } = require("../controllers/invoiceController");
+
+const {
+    updateInvoiceStatus,
+    getInvoiceHistory
+} = require("../controllers/invoiceStatusController");
+
+const {
+    addInvoiceNote,
+    getInvoiceNotes
+} = require("../controllers/invoiceNoteController");
+
+const {
+    createCreditNote,
+    getCreditNotes
+} = require("../controllers/creditNoteController");
+
+const {
+    generateCurrentPeriodInvoices
+} = require("../controllers/invoiceBulkController");
 
 const authenticateUser = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
-router.put(
-    "/:id",
-    authenticateUser,
-    updateInvoiceDraft
-);
+router.post("/", authenticateUser, createInvoice);
+router.get("/", authenticateUser, getInvoices);
+router.get("/:id", authenticateUser, getInvoice);
 
-router.post(
-    "/",
-    authenticateUser,
-    createInvoice
-);
-
-router.patch(
-    "/:id/due-date",
-    authenticateUser,
-    updateInvoiceDueDate
-);
-
-router.get(
-    "/",
-    authenticateUser,
-    getInvoices
-);
+router.put("/:id", authenticateUser, updateInvoiceDraft);
+router.patch("/:id/due-date", authenticateUser, updateInvoiceDueDate);
 
 router.patch(
     "/:id/status",
@@ -51,35 +46,12 @@ router.patch(
     updateInvoiceStatus
 );
 
-router.get(
-    "/:id",
-    authenticateUser,
-    getInvoice
-);
+router.get("/:id/history", authenticateUser, getInvoiceHistory);
 
-router.get(
-    "/:id/history",
-    authenticateUser,
-    getInvoiceHistory
-);
+router.post("/:id/notes", authenticateUser, addInvoiceNote);
+router.get("/:id/notes", authenticateUser, getInvoiceNotes);
 
-router.post(
-    "/:id/notes",
-    authenticateUser,
-    addInvoiceNote
-);
-
-router.get(
-    "/:id/notes",
-    authenticateUser,
-    getInvoiceNotes
-);
-
-router.get(
-    "/:id/credit-notes",
-    authenticateUser,
-    getCreditNotes
-);
+router.get("/:id/credit-notes", authenticateUser, getCreditNotes);
 
 router.post(
     "/:id/credit-notes",

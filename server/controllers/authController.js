@@ -52,6 +52,36 @@ const login = async (req, res) => {
     }
 };
 
+/*
+ * Return all account managers.
+ *
+ * This is used by the invoice filters so the frontend
+ * can display the available invoice owners.
+ *
+ * Only Billing Admins should be able to request the
+ * complete list of account managers.
+ */
+const getAccountManagers = async (req, res) => {
+    try {
+        const accountManagers = await User.find({
+            role: "account_manager"
+        })
+            .select("_id name email")
+            .sort({ name: 1 });
+
+        res.json({
+            accountManagers
+        });
+    } catch (error) {
+        console.error("Get account managers error:", error);
+
+        res.status(500).json({
+            message: "Something went wrong"
+        });
+    }
+};
+
 module.exports = {
-    login
+    login,
+    getAccountManagers
 };
