@@ -2,6 +2,9 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Layout from "./components/Layout";
+import Subscriptions from "./pages/Subscriptions";
+
 import { useAuth } from "./context/AuthContext";
 
 const ProtectedRoute = ({ children }) => {
@@ -20,13 +23,33 @@ const App = () => {
             <Route path="/login" element={<Login />} />
 
             <Route
-                path="/dashboard"
                 element={
                     <ProtectedRoute>
-                        <Dashboard />
+                        <Layout />
                     </ProtectedRoute>
                 }
-            />
+            >
+                <Route
+                    path="/dashboard"
+                    element={<Dashboard />}
+                />
+
+                <Route
+                    path="/subscriptions"
+                    element={<Subscriptions />}
+                />
+
+                <Route
+                    path="/invoices"
+                    element={
+                        <div>
+                            <h1 className="text-2xl font-bold">
+                                Invoices
+                            </h1>
+                        </div>
+                    }
+                />
+            </Route>
 
             <Route
                 path="*"
