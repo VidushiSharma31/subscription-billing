@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Layout from "./components/Layout";
 import Subscriptions from "./pages/Subscriptions";
+import Invoices from "./pages/Invoices";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -41,13 +42,7 @@ const App = () => {
 
                 <Route
                     path="/invoices"
-                    element={
-                        <div>
-                            <h1 className="text-2xl font-bold">
-                                Invoices
-                            </h1>
-                        </div>
-                    }
+                    element={ <Invoices /> }
                 />
             </Route>
 
