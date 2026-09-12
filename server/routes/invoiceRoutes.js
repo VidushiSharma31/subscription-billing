@@ -10,7 +10,8 @@ const {
     getInvoiceNotes, 
     createCreditNote,
     getCreditNotes,
-    generateCurrentPeriodInvoices
+    generateCurrentPeriodInvoices,
+    updateInvoiceDueDate
 } = require("../controllers/invoiceController");
 
 const authenticateUser = require("../middleware/authMiddleware");
@@ -22,6 +23,12 @@ router.post(
     "/",
     authenticateUser,
     createInvoice
+);
+
+router.patch(
+    "/:id/due-date",
+    authenticateUser,
+    updateInvoiceDueDate
 );
 
 router.get(

@@ -6,6 +6,7 @@ const CreditNote = require("../models/CreditNote");
 
 const { getAccessibleInvoice } = require("../utils/invoiceAccess");
 const { isInvoiceOverdue } = require("../utils/invoiceStatus");
+const { getAccessibleSubscription } = require("../utils/subscriptionAccess");
 
 const allowedTransitions = {
     draft: ["issued", "void"],
@@ -106,6 +107,7 @@ const createInvoice = async(req, res) => {
 const getInvoices = async (req, res) => {
     try {
         const {
+            search,
             status,
             subscription,
             overdue,
@@ -117,6 +119,102 @@ const getInvoices = async (req, res) => {
 
         const filter = {};
 
+        /*
+         * Account Managers can only see invoices belonging
+         * to subscriptions they own or collaborate on.
+         */
+        let accessibleSubscriptionIds = null;
+
+        if (req.user.role === "account_manager") {
+            const accessibleSubscriptions = await Subscription.find({
+                $or: [
+                    { owner: req.user.userId },
+                    { collaborators: req.user.userId }
+                ]
+            }).select("_id");
+
+            accessibleSubscriptionIds = accessibleSubscriptions.map(
+                (item) => item._id
+            );
+        }
+
+        /*
+         * Search subscriptions by customer name,
+         * billing email, or plan name.
+         */
+        if (search && search.trim()) {
+            const searchRegex = {
+                $regex: search.trim(),
+                $options: "i"
+            };
+
+            const subscriptionSearchFilter = {
+                $or: [
+                    { customerName: searchRegex },
+                    { billingEmail: searchRegex },
+                    { planName: searchRegex }
+                ]
+            };
+
+            /*
+             * If Account Manager, search only within
+             * subscriptions they can access.
+             */
+            if (accessibleSubscriptionIds) {
+                subscriptionSearchFilter._id = {
+                    $in: accessibleSubscriptionIds
+                };
+            }
+
+            const matchingSubscriptions = await Subscription.find(
+                subscriptionSearchFilter
+            ).select("_id");
+
+            filter.subscription = {
+                $in: matchingSubscriptions.map(
+                    (item) => item._id
+                )
+            };
+        }
+
+        /*
+         * Filter by subscription.
+         */
+        if (subscription) {
+            if (accessibleSubscriptionIds) {
+                const hasAccess = accessibleSubscriptionIds.some(
+                    (id) => id.toString() === subscription
+                );
+
+                if (!hasAccess) {
+                    return res.json({
+                        invoices: [],
+                        pagination: {
+                            page: Number(page),
+                            limit: Number(limit),
+                            total: 0,
+                            totalPages: 0
+                        }
+                    });
+                }
+            }
+
+            /*
+             * If search is also being used, both conditions
+             * must match the same subscription.
+             */
+            if (filter.subscription) {
+                filter.subscription = {
+                    $in: [subscription]
+                };
+            } else {
+                filter.subscription = subscription;
+            }
+        }
+
+        /*
+         * Filter by invoice status.
+         */
         if (status) {
             if (!["draft", "issued", "paid", "void"].includes(status)) {
                 return res.status(400).json({
@@ -127,24 +225,41 @@ const getInvoices = async (req, res) => {
             filter.status = status;
         }
 
-        if (subscription) {
-            filter.subscription = subscription;
-        }
-
+        /*
+         * Overdue invoices must be issued and past due date.
+         */
         if (overdue === "true") {
-            filter.status = "issued";
-            filter.dueDate = {
-                $lt: new Date()
-            };
+            if (status && status !== "issued") {
+                /*
+                 * Only issued invoices can be overdue.
+                 * Return no matching invoices.
+                 */
+                filter.status = "__no_matching_status__";
+            } else {
+                filter.status = "issued";
+                filter.dueDate = { $lt: new Date() };
+            }
         }
 
+        /*
+         * Not overdue:
+         * - Issued invoices must have a future/current due date.
+         * - Other statuses are not overdue by definition.
+         */
         if (overdue === "false") {
-            filter.$or = [
-                { status: { $ne: "issued" } },
-                { dueDate: { $gte: new Date() } }
-            ];
+            if (status === "issued") {
+                filter.dueDate = { $gte: new Date() };
+            } else if (!status) {
+                filter.$or = [
+                    { status: { $ne: "issued" } },
+                    { dueDate: { $gte: new Date() } }
+                ];
+            }
         }
 
+        /*
+         * Validate sorting.
+         */
         const allowedSortFields = [
             "amount",
             "dueDate",
@@ -165,6 +280,9 @@ const getInvoices = async (req, res) => {
             });
         }
 
+        /*
+         * Validate pagination.
+         */
         const pageNumber = Number(page);
         const pageSize = Number(limit);
 
@@ -181,28 +299,15 @@ const getInvoices = async (req, res) => {
         }
 
         /*
-         * Account Managers can only see invoices belonging
-         * to subscriptions they own or collaborate on.
+         * If no search/subscription filter was applied,
+         * apply the Account Manager's general access restriction.
          */
-        if (req.user.role === "account_manager") {
-            const accessibleSubscriptions = await Subscription.find({
-                $or: [
-                    { owner: req.user.userId },
-                    { collaborators: req.user.userId }
-                ]
-            }).select("_id");
-
-            const subscriptionIds = accessibleSubscriptions.map(
-                (item) => item._id
-            );
-
-            filter.subscription = subscription
-                ? subscriptionIds.some(
-                    (id) => id.toString() === subscription
-                )
-                    ? subscription
-                    : null
-                : { $in: subscriptionIds };
+        if (accessibleSubscriptionIds) {
+            if (!filter.subscription) {
+                filter.subscription = {
+                    $in: accessibleSubscriptionIds
+                };
+            }
         }
 
         const sort = {
@@ -246,6 +351,7 @@ const getInvoices = async (req, res) => {
         });
     }
 };
+
 
 const updateInvoiceStatus = async (req, res) => {
     try {
@@ -314,6 +420,84 @@ const updateInvoiceStatus = async (req, res) => {
         });
     } catch (error) {
         console.error("Update invoice status error:", error);
+
+        res.status(500).json({
+            message: "Something went wrong"
+        });
+    }
+};
+
+const updateInvoiceDueDate = async (req, res) => {
+    try {
+        const { dueDate } = req.body;
+
+        if (!dueDate) {
+            return res.status(400).json({
+                message: "Due date is required"
+            });
+        }
+
+        const parsedDueDate = new Date(dueDate);
+
+        if (Number.isNaN(parsedDueDate.getTime())) {
+            return res.status(400).json({
+                message: "Invalid due date"
+            });
+        }
+
+        const invoice = await Invoice.findById(req.params.id);
+
+        if (!invoice) {
+            return res.status(404).json({
+                message: "Invoice not found"
+            });
+        }
+
+        // Paid invoices are immutable.
+        if (invoice.status === "paid") {
+            return res.status(400).json({
+                message: "Paid invoices cannot be modified"
+            });
+        }
+
+        // Void invoices should also remain immutable.
+        if (invoice.status === "void") {
+            return res.status(400).json({
+                message: "Void invoices cannot be modified"
+            });
+        }
+
+        /*
+         * Account Managers can only modify invoices
+         * belonging to subscriptions they own or collaborate on.
+         */
+        if (req.user.role === "account_manager") {
+            const accessibleSubscription =
+                await getAccessibleSubscription(
+                    invoice.subscription.toString(),
+                    req.user
+                );
+
+            if (!accessibleSubscription) {
+                return res.status(403).json({
+                    message: "You do not have access to this invoice"
+                });
+            }
+        }
+
+        invoice.dueDate = parsedDueDate;
+
+        await invoice.save();
+
+        res.json({
+            message: "Invoice due date updated successfully",
+            invoice
+        });
+    } catch (error) {
+        console.error(
+            "Update invoice due date error:",
+            error
+        );
 
         res.status(500).json({
             message: "Something went wrong"
@@ -668,5 +852,5 @@ const generateCurrentPeriodInvoices = async (req, res) => {
 };
 
 module.exports = {
-    createInvoice, getInvoices, updateInvoiceStatus, getInvoice, getInvoiceHistory, addInvoiceNote, getInvoiceNotes, createCreditNote, getCreditNotes, generateCurrentPeriodInvoices
+    createInvoice, getInvoices, updateInvoiceStatus, getInvoice, getInvoiceHistory, addInvoiceNote, getInvoiceNotes, createCreditNote, getCreditNotes, generateCurrentPeriodInvoices, updateInvoiceDueDate
 };
