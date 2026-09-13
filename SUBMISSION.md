@@ -7,7 +7,7 @@
 https://github.com/VidushiSharma31/subscription-billing
 
 ## Live Application
-https://subscription-billing-ir9c1xblb-vidushi8.vercel.app
+https://subscription-billing-blond.vercel.app
 
 ## Backend
 https://subscription-billing-sq31.onrender.com
@@ -61,12 +61,6 @@ The deployed backend may sleep when idle. The first request after inactivity can
 - Immutable invoice history
 - Subscription audit history
 - Overdue alerts
-
-## Final Verification
-Before submission, verify both demo roles and confirm:
-- login works
-- subscription create/edit/archive/restore works
-- collaborator permissions work
 - invoice lifecycle rules are enforced
 - invoice filters work together
 - receivables export works
