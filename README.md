@@ -3,7 +3,7 @@
 A full-stack subscription billing system for managing customers, subscriptions, invoices, billing workflows, audit history, receivables, dashboards, and overdue alerts.
 
 ## Live Application
-- Frontend: https://subscription-billing-ir9c1xblb-vidushi8.vercel.app
+- Frontend: https://subscription-billing-blond.vercel.app
 - Backend: https://subscription-billing-sq31.onrender.com
 - Health check: https://subscription-billing-sq31.onrender.com/api/health
 - Repository: https://github.com/VidushiSharma31/subscription-billing
