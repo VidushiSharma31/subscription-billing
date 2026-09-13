@@ -77,10 +77,6 @@ const Login = () => {
                         {saving ? "Signing in..." : "Login"}
                     </button>
                 </form>
-
-                <p className="mt-6 text-center text-xs text-slate-400">
-                    Demo: admin@demo.com / Password123!
-                </p>
             </div>
         </div>
     );
