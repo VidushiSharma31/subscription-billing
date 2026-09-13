@@ -1,52 +1,75 @@
 # Submission
 
-Fill this in and commit it. This is the first file we open.
+## Project
+**Subscription Billing**
 
-## Links
+## GitHub Repository
+https://github.com/VidushiSharma31/subscription-billing
 
-- **GitHub repository:** <public repo URL>
-- **Live application:** <deployed URL>
+## Live Application
+https://subscription-billing-ir9c1xblb-vidushi8.vercel.app
 
-## Notes for the reviewer
+## Backend
+https://subscription-billing-sq31.onrender.com
 
-<Anything we should know before opening the link — e.g. your host sleeps when idle and the first
-request can take up to a minute.>
+## Health Check
+https://subscription-billing-sq31.onrender.com/api/health
 
-## Demo credentials
+## Demo Credentials
 
-| Role | Email | Password |
-|------|-------|----------|
-| <role 1> | | |
-| <role 2> | | |
+### Billing Admin
+```text
+Email: admin@example.com
+Password: admin123
+```
 
-## Stack
+### Account Manager 1
+```text
+Email: manager1@example.com
+Password: manager123
+```
 
-| Layer | What you used | Why |
-|-------|---------------|-----|
-| Frontend | | |
-| Backend | | |
-| Database | | |
-| Hosting | | |
+### Account Manager 2
+```text
+Email: manager2@example.com
+Password: manager456
+```
 
-## Goal checklist
+## Deployment
+- Frontend: Vercel
+- Backend: Render
+- Database: MongoDB Atlas
 
-Mark each honestly. Partial is fine — say what is partial.
+The backend uses environment variables for MongoDB credentials, JWT secrets, and the allowed frontend origin. The frontend uses `VITE_API_URL` for the deployed API base URL.
 
-| # | Goal | Status | Notes |
-|---|------|--------|-------|
-| 1 | | Done / Partial / Not done | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+## Demo Data
+The deployed application contains representative users, subscriptions, invoices, audit history, dashboard data, and overdue data.
 
-## How much time did you actually spend?
+## Free-tier note
+The deployed backend may sleep when idle. The first request after inactivity can therefore take longer than subsequent requests.
 
-## What would you do next, with another 12 hours?
+## Assignment Coverage
+- Roles and server-side permissions
+- Subscription CRUD and archive/restore
+- Collaborators
+- Invoice lifecycle
+- Paid invoice immutability and credit notes
+- Server-side invoice filtering and pagination
+- Bulk invoice generation
+- Receivables CSV
+- Dashboard
+- Immutable invoice history
+- Subscription audit history
+- Overdue alerts
 
-## What are you least happy with in this codebase, and why?
+## Final Verification
+Before submission, verify both demo roles and confirm:
+- login works
+- subscription create/edit/archive/restore works
+- collaborator permissions work
+- invoice lifecycle rules are enforced
+- invoice filters work together
+- receivables export works
+- dashboard loads
+- audit/history displays events
+- overdue alerts work
