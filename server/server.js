@@ -13,10 +13,14 @@ const alertRoutes = require("./routes/alertRoutes");
 
 const app = express();
 
-const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const allowedOrigins = [
+    "http://localhost:5173",
+    process.env.CLIENT_ORIGIN
+].filter(Boolean);
 
 app.use(cors({
-    origin: clientOrigin
+    origin: allowedOrigins,
+    credentials: true
 }));
 
 app.use(express.json());
@@ -41,6 +45,7 @@ app.use((req, res) => {
 
 app.use((error, req, res, next) => {
     console.error("Unhandled error:", error);
+
     res.status(500).json({
         message: "Something went wrong"
     });
