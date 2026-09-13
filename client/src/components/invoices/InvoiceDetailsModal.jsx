@@ -17,6 +17,7 @@ const InvoiceDetailsModal = ({
 }) => {
     const [history, setHistory] = useState([]);
     const [notes, setNotes] = useState([]);
+    const [timeline, setTimeline] = useState([]);
     const [newNote, setNewNote] = useState("");
     const [newDueDate, setNewDueDate] = useState(
         invoice.dueDate?.slice(0, 10) || ""
@@ -40,21 +41,15 @@ const InvoiceDetailsModal = ({
         try {
             setError("");
 
-            const [historyResponse, notesResponse] = await Promise.all([
-                fetch(`${API_URL}/invoices/${invoice._id}/history`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }),
-                fetch(`${API_URL}/invoices/${invoice._id}/notes`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }),
+            const [historyResponse, notesResponse, timelineResponse] = await Promise.all([
+                fetch(`${API_URL}/invoices/${invoice._id}/history`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/invoices/${invoice._id}/notes`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/invoices/${invoice._id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
             ]);
 
             const historyData = await historyResponse.json();
             const notesData = await notesResponse.json();
+            const timelineData = await timelineResponse.json();
 
             if (!historyResponse.ok) {
                 throw new Error(
@@ -63,13 +58,15 @@ const InvoiceDetailsModal = ({
             }
 
             if (!notesResponse.ok) {
-                throw new Error(
-                    notesData.message || "Failed to load invoice notes"
-                );
+                throw new Error(notesData.message || "Failed to load invoice notes");
+            }
+            if (!timelineResponse.ok) {
+                throw new Error(timelineData.message || "Failed to load invoice timeline");
             }
 
             setHistory(historyData.history || []);
             setNotes(notesData.notes || []);
+            setTimeline(timelineData.timeline || []);
         } catch (error) {
             setError(error.message);
         }
@@ -561,41 +558,42 @@ const InvoiceDetailsModal = ({
 
                 <div>
                     <h3 className="mb-3 text-sm font-semibold text-slate-900">
-                        Status History
+                        Unified Timeline
                     </h3>
 
-                    {history.length === 0 ? (
-                        <p className="text-sm text-slate-500">
-                            No status history yet.
-                        </p>
+                    {timeline.length === 0 ? (
+                        <p className="text-sm text-slate-500">No timeline events yet.</p>
                     ) : (
-                        <div className="space-y-2">
-                            {history.map((item) => (
-                                <div
-                                    key={item._id}
-                                    className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
-                                >
-                                    <div>
-                                        <span className="font-medium text-slate-700">
-                                            {item.oldStatus || "—"}
-                                        </span>
-                                        <span className="mx-2 text-slate-400">
-                                            →
-                                        </span>
-                                        <span className="font-medium text-slate-700">
-                                            {item.newStatus}
-                                        </span>
-
-                                        {item.reason && (
-                                            <p className="mt-1 text-xs text-slate-500">
-                                                Reason: {item.reason}
+                        <div className="space-y-3">
+                            {timeline.map((item) => (
+                                <div key={item.id} className="rounded-lg border border-slate-200 p-3">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <p className="font-medium text-slate-800 capitalize">
+                                                {item.type.replace("_", " ")}
                                             </p>
-                                        )}
-                                    </div>
-
-                                    <div className="text-xs text-slate-400">
-                                        {item.changedBy?.name || "User"} ·{" "}
-                                        {formatDate(item.createdAt)}
+                                            {item.type === "created" && (
+                                                <p className="mt-1 text-sm text-slate-600">Invoice created as draft.</p>
+                                            )}
+                                            {item.type === "status_change" && (
+                                                <p className="mt-1 text-sm text-slate-600">
+                                                    {item.details.oldStatus} → {item.details.newStatus}
+                                                    {item.details.reason ? ` · ${item.details.reason}` : ""}
+                                                </p>
+                                            )}
+                                            {item.type === "note" && (
+                                                <p className="mt-1 text-sm text-slate-600">{item.details.text}</p>
+                                            )}
+                                            {item.type === "credit_note" && (
+                                                <p className="mt-1 text-sm text-slate-600">
+                                                    {formatAmount(item.details.amount)} · {item.details.reason}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="text-right text-xs text-slate-400">
+                                            <p>{item.user?.name || "User"}</p>
+                                            <p>{formatDate(item.createdAt)}</p>
+                                        </div>
                                     </div>
                                 </div>
                             ))}

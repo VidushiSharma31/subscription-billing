@@ -13,6 +13,8 @@ const {
     getInvoiceHistory
 } = require("../controllers/invoiceStatusController");
 
+const { getInvoiceTimeline } = require("../controllers/invoiceTimelineController");
+
 const {
     addInvoiceNote,
     getInvoiceNotes
@@ -47,6 +49,7 @@ router.patch(
 );
 
 router.get("/:id/history", authenticateUser, getInvoiceHistory);
+router.get("/:id/timeline", authenticateUser, getInvoiceTimeline);
 
 router.post("/:id/notes", authenticateUser, addInvoiceNote);
 router.get("/:id/notes", authenticateUser, getInvoiceNotes);

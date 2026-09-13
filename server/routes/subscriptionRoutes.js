@@ -12,6 +12,7 @@ const {
 
 const authenticateUser = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
+const { getSubscriptionAudit } = require("../controllers/subscriptionAuditController");
 
 const router = express.Router();
 
@@ -31,6 +32,12 @@ router.get(
     "/:id",
     authenticateUser,
     getSubscription
+);
+
+router.get(
+    "/:id/audit",
+    authenticateUser,
+    getSubscriptionAudit
 );
 
 router.put(

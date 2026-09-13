@@ -87,6 +87,7 @@ const createInvoice = async (req, res) => {
 
         const invoice = await Invoice.create({
             subscription,
+            createdBy: req.user.userId,
             periodStart: start,
             periodEnd: end,
             amount,

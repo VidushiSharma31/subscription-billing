@@ -3,6 +3,7 @@ import {
     useEffect,
     useState
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 
@@ -22,6 +23,8 @@ const Invoices = () => {
         token,
         user
     } = useAuth();
+
+    const [searchParams] = useSearchParams();
 
 
     /* -----------------------------
@@ -55,7 +58,7 @@ const Invoices = () => {
         useState("");
 
     const [subscriptionFilter, setSubscriptionFilter] =
-        useState("");
+        useState(searchParams.get("subscription") || "");
 
 
     /* -----------------------------
@@ -110,6 +113,29 @@ const Invoices = () => {
 
     const isAdmin =
         user?.role === "billing_admin";
+
+    const exportReceivables = async () => {
+        try {
+            const response = await fetch(`${API_URL}/reports/receivables/export`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.message || "Failed to export receivables");
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "receivables.csv";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            setError(error.message);
+        }
+    };
 
 
     /* -----------------------------
@@ -458,6 +484,14 @@ const Invoices = () => {
 
 
                 <div className="flex gap-3">
+
+                    <button
+                        type="button"
+                        onClick={exportReceivables}
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                        Export Receivables CSV
+                    </button>
 
                     {isAdmin && (
                         <button

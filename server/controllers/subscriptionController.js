@@ -1,5 +1,6 @@
 const Subscription = require("../models/Subscription");
 const User = require("../models/User");
+const { createSubscriptionAudit } = require("../utils/subscriptionAudit");
 
 const {
     getAccessibleSubscription
@@ -49,6 +50,13 @@ const createSubscription = async (req, res) => {
             price,
             startDate,
             owner: req.user.userId
+        });
+
+        await createSubscriptionAudit({
+            subscriptionId: subscription._id,
+            action: "created",
+            performedBy: req.user.userId,
+            details: `Created subscription for ${subscription.customerName} on ${subscription.planName} plan.`
         });
 
         res.status(201).json({
@@ -246,6 +254,27 @@ const updateSubscription = async (req, res) => {
             startDate
         } = req.body;
 
+        const changes = [];
+
+        if (subscription.customerName !== customerName) {
+            changes.push(`Customer: ${subscription.customerName} → ${customerName}`);
+        }
+        if (subscription.billingEmail !== billingEmail) {
+            changes.push(`Billing email: ${subscription.billingEmail} → ${billingEmail}`);
+        }
+        if (subscription.planName !== planName) {
+            changes.push(`Plan: ${subscription.planName} → ${planName}`);
+        }
+        if (subscription.billingCycle !== billingCycle) {
+            changes.push(`Billing cycle: ${subscription.billingCycle} → ${billingCycle}`);
+        }
+        if (subscription.price !== price) {
+            changes.push(`Price: ${subscription.price} → ${price}`);
+        }
+        if (new Date(subscription.startDate).getTime() !== new Date(startDate).getTime()) {
+            changes.push(`Start date: ${new Date(subscription.startDate).toISOString().slice(0, 10)} → ${new Date(startDate).toISOString().slice(0, 10)}`);
+        }
+
         if (
             !customerName ||
             !billingEmail ||
@@ -280,6 +309,15 @@ const updateSubscription = async (req, res) => {
 
         await subscription.save();
 
+        if (changes.length > 0) {
+            await createSubscriptionAudit({
+                subscriptionId: subscription._id,
+                action: "updated",
+                performedBy: req.user.userId,
+                details: changes.join(" | ")
+            });
+        }
+
         res.json({
             message: "Subscription updated successfully",
             subscription
@@ -313,6 +351,13 @@ const archiveSubscription = async (req, res) => {
 
         await subscription.save();
 
+        await createSubscriptionAudit({
+            subscriptionId: subscription._id,
+            action: "archived",
+            performedBy: req.user.userId,
+            details: "Subscription archived. Future invoice generation is stopped."
+        });
+
         res.json({
             message: "Subscription archived successfully",
             subscription
@@ -345,6 +390,13 @@ const restoreSubscription = async (req, res) => {
         subscription.status = "active";
 
         await subscription.save();
+
+        await createSubscriptionAudit({
+            subscriptionId: subscription._id,
+            action: "restored",
+            performedBy: req.user.userId,
+            details: "Subscription restored and is active again."
+        });
 
         res.json({
             message: "Subscription restored successfully",
@@ -403,9 +455,57 @@ const updateCollaborators = async (req, res) => {
             });
         }
 
+        const previousCollaboratorIds = subscription.collaborators.map(
+            (id) => id.toString()
+        );
+
+        const added = collaboratorIds.filter(
+            (id) => !previousCollaboratorIds.includes(id.toString())
+        );
+
+        const removed = previousCollaboratorIds.filter(
+            (id) => !collaboratorIds.map(String).includes(id)
+        );
+
         subscription.collaborators = collaboratorIds;
 
         await subscription.save();
+
+        if (added.length > 0 || removed.length > 0) {
+            const namesById = new Map(
+                users.map((user) => [user._id.toString(), user.name])
+            );
+
+            const addedNames = added.map(
+                (id) => namesById.get(id.toString()) || id.toString()
+            );
+
+            const removedUsers = await User.find({
+                _id: { $in: removed }
+            }).select("_id name");
+
+            const removedNames = removed.map((id) => {
+                const user = removedUsers.find(
+                    (item) => item._id.toString() === id.toString()
+                );
+                return user?.name || id.toString();
+            });
+
+            const parts = [];
+            if (addedNames.length > 0) {
+                parts.push(`Added: ${addedNames.join(", ")}`);
+            }
+            if (removedNames.length > 0) {
+                parts.push(`Removed: ${removedNames.join(", ")}`);
+            }
+
+            await createSubscriptionAudit({
+                subscriptionId: subscription._id,
+                action: "collaborators_updated",
+                performedBy: req.user.userId,
+                details: parts.join(" | ")
+            });
+        }
 
         await subscription.populate({
             path: "collaborators",

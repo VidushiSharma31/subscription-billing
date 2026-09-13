@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const subscriptionRoutes = require("./routes/subscriptionRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
 const reportRoutes = require("./routes/reportRoutes");
+const alertRoutes = require("./routes/alertRoutes");
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/alerts", alertRoutes);
 
 const startServer = async () => {
     await connectDatabase();
