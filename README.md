@@ -230,23 +230,6 @@ Email: manager2@example.com
 Password: manager456
 ```
 
-## Assignment Coverage
-
-| Requirement | Implementation |
-|---|---|
-| Roles and permissions | JWT authentication + server authorization |
-| Subscription lifecycle | Subscription controllers/routes + archive/restore |
-| Collaborators | Subscription collaborator management |
-| Invoice lifecycle | Invoice/status controllers |
-| Invoice search/filtering | Server-side invoice queries |
-| Bulk generation | Bulk invoice controller |
-| Receivables CSV | Reporting/export functionality |
-| Dashboard | Dashboard/reporting functionality |
-| Invoice history | Invoice history/timeline |
-| Subscription audit | Subscription audit model/controller |
-| Overdue alerts | Alert routes/controller/UI |
-| Deployment | Vercel + Render + MongoDB Atlas |
-
 ## Security
 - Passwords are not stored in plain text.
 - JWT is used for authenticated API requests.
