@@ -6,6 +6,7 @@ import {
 import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
+import { API_URL, apiRequest } from "../api";
 
 import InvoiceTable from "../components/invoices/InvoiceTable";
 import InvoiceFilters from "../components/invoices/InvoiceFilters";
@@ -13,10 +14,6 @@ import CreateInvoiceModal from "../components/invoices/CreateInvoiceModal";
 import InvoiceDetailsModal from "../components/invoices/InvoiceDetailsModal";
 import CreditNoteModal from "../components/invoices/CreditNoteModal";
 import BulkGenerateModal from "../components/invoices/BulkGenerateModal";
-
-const API_URL =
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:5000/api";
 
 const Invoices = () => {
     const {

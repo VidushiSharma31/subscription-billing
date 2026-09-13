@@ -1,10 +1,8 @@
 const Subscription = require("../models/Subscription");
 const User = require("../models/User");
 const { createSubscriptionAudit } = require("../utils/subscriptionAudit");
-
-const {
-    getAccessibleSubscription
-} = require("../utils/subscriptionAccess");
+const { getAccessibleSubscription } = require("../utils/subscriptionAccess");
+const { isValidMoney, toMoney } = require("../utils/money");
 
 const createSubscription = async (req, res) => {
     try {
@@ -36,10 +34,30 @@ const createSubscription = async (req, res) => {
             });
         }
 
-        if (typeof price !== "number" || price < 0) {
+        if (!isValidMoney(price)) {
             return res.status(400).json({
-                message: "Price must be a non-negative number"
+                message: "Price must be a non-negative amount with up to two decimal places"
             });
+        }
+
+        let ownerId = req.user.userId;
+
+        if (req.user.role === "billing_admin") {
+            if (!req.body.owner) {
+                return res.status(400).json({
+                    message: "An owning account manager is required"
+                });
+            }
+
+            const owner = await User.findById(req.body.owner);
+
+            if (!owner || owner.role !== "account_manager") {
+                return res.status(400).json({
+                    message: "Owner must be an account manager"
+                });
+            }
+
+            ownerId = owner._id;
         }
 
         const subscription = await Subscription.create({
@@ -47,9 +65,9 @@ const createSubscription = async (req, res) => {
             billingEmail,
             planName,
             billingCycle,
-            price,
+            price: toMoney(price),
             startDate,
-            owner: req.user.userId
+            owner: ownerId
         });
 
         await createSubscriptionAudit({
@@ -85,17 +103,17 @@ const getSubscriptions = async (req, res) => {
         } = req.query;
 
         const filter = {};
+        const conditions = [];
 
-        // Account Managers can only access subscriptions
-        // they own or collaborate on.
         if (req.user.role === "account_manager") {
-            filter.$or = [
-                { owner: req.user.userId },
-                { collaborators: req.user.userId }
-            ];
+            conditions.push({
+                $or: [
+                    { owner: req.user.userId },
+                    { collaborators: req.user.userId }
+                ]
+            });
         }
 
-        // Filter by status
         if (status) {
             if (!["active", "archived"].includes(status)) {
                 return res.status(400).json({
@@ -106,7 +124,6 @@ const getSubscriptions = async (req, res) => {
             filter.status = status;
         }
 
-        // Filter by billing cycle
         if (billingCycle) {
             if (!["monthly", "annual"].includes(billingCycle)) {
                 return res.status(400).json({
@@ -117,13 +134,20 @@ const getSubscriptions = async (req, res) => {
             filter.billingCycle = billingCycle;
         }
 
-        // Search customer name, billing email, or plan name
         if (search) {
-            filter.$or = [
-                { customerName: { $regex: search, $options: "i" } },
-                { billingEmail: { $regex: search, $options: "i" } },
-                { planName: { $regex: search, $options: "i" } }
-            ];
+            conditions.push({
+                $or: [
+                    { customerName: { $regex: search, $options: "i" } },
+                    { billingEmail: { $regex: search, $options: "i" } },
+                    { planName: { $regex: search, $options: "i" } }
+                ]
+            });
+        }
+
+        if (conditions.length === 1) {
+            Object.assign(filter, conditions[0]);
+        } else if (conditions.length > 1) {
+            filter.$and = conditions;
         }
 
         const allowedSortFields = [
@@ -294,9 +318,9 @@ const updateSubscription = async (req, res) => {
             });
         }
 
-        if (typeof price !== "number" || price < 0) {
+        if (!isValidMoney(price)) {
             return res.status(400).json({
-                message: "Price must be a non-negative number"
+                message: "Price must be a non-negative amount with up to two decimal places"
             });
         }
 
@@ -304,7 +328,7 @@ const updateSubscription = async (req, res) => {
         subscription.billingEmail = billingEmail;
         subscription.planName = planName;
         subscription.billingCycle = billingCycle;
-        subscription.price = price;
+        subscription.price = toMoney(price);
         subscription.startDate = startDate;
 
         await subscription.save();
@@ -333,7 +357,10 @@ const updateSubscription = async (req, res) => {
 
 const archiveSubscription = async (req, res) => {
     try {
-        const subscription = await Subscription.findById(req.params.id);
+        const subscription = await getAccessibleSubscription(
+            req.params.id,
+            req.user
+        );
 
         if (!subscription) {
             return res.status(404).json({
@@ -373,7 +400,10 @@ const archiveSubscription = async (req, res) => {
 
 const restoreSubscription = async (req, res) => {
     try {
-        const subscription = await Subscription.findById(req.params.id);
+        const subscription = await getAccessibleSubscription(
+            req.params.id,
+            req.user
+        );
 
         if (!subscription) {
             return res.status(404).json({
@@ -413,7 +443,10 @@ const restoreSubscription = async (req, res) => {
 
 const updateCollaborators = async (req, res) => {
     try {
-        const subscription = await Subscription.findById(req.params.id);
+        const subscription = await getAccessibleSubscription(
+            req.params.id,
+            req.user
+        );
 
         if (!subscription) {
             return res.status(404).json({
@@ -431,7 +464,7 @@ const updateCollaborators = async (req, res) => {
 
         const users = await User.find({
             _id: { $in: collaboratorIds }
-        }).select("_id role");
+        }).select("_id name role");
 
         if (users.length !== collaboratorIds.length) {
             return res.status(400).json({

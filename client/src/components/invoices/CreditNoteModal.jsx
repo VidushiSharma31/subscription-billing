@@ -2,8 +2,7 @@ import { useState } from "react";
 import Modal from "../shared/Modal";
 import FormField from "../shared/FormField";
 import ModalActions from "../shared/ModalActions";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+import { API_URL } from "../../api";
 
 const CreditNoteModal = ({
     token,

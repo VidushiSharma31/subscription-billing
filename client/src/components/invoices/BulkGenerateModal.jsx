@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import Modal from "../shared/Modal";
 import ResultCard from "../shared/ResultCard";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+import { API_URL } from "../../api";
 
 const BulkGenerateModal = ({
     token,

@@ -1,5 +1,6 @@
 const CreditNote = require("../models/CreditNote");
 const { getAccessibleInvoice } = require("../utils/invoiceAccess");
+const { isValidMoney, toMoney } = require("../utils/money");
 
 const createCreditNote = async (req, res) => {
     try {
@@ -23,7 +24,7 @@ const createCreditNote = async (req, res) => {
             });
         }
 
-        if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        if (!isValidMoney(amount) || amount <= 0) {
             return res.status(400).json({
                 message: "Credit note amount must be greater than zero"
             });
@@ -46,7 +47,7 @@ const createCreditNote = async (req, res) => {
 
         const creditNote = await CreditNote.create({
             invoice: invoice._id,
-            amount,
+            amount: toMoney(amount),
             reason: reason.trim(),
             createdBy: req.user.userId
         });

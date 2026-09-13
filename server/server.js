@@ -13,11 +13,11 @@ const alertRoutes = require("./routes/alertRoutes");
 
 const app = express();
 
-app.use(cors({
-    origin: "http://localhost:5173"
-}));
+const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
-const PORT = process.env.PORT || 5000;
+app.use(cors({
+    origin: clientOrigin
+}));
 
 app.use(express.json());
 
@@ -33,11 +33,31 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/alerts", alertRoutes);
 
+app.use((req, res) => {
+    res.status(404).json({
+        message: "Route not found"
+    });
+});
+
+app.use((error, req, res, next) => {
+    console.error("Unhandled error:", error);
+    res.status(500).json({
+        message: "Something went wrong"
+    });
+});
+
+const PORT = process.env.PORT || 5000;
+
 const startServer = async () => {
+    if (!process.env.MONGODB_URI || !process.env.JWT_SECRET) {
+        console.error("MONGODB_URI and JWT_SECRET must be set");
+        process.exit(1);
+    }
+
     await connectDatabase();
 
     app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+        console.log(`Server running on port ${PORT}`);
     });
 };
 

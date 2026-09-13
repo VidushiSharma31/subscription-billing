@@ -1,47 +1,48 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+import { apiRequest } from "../api";
 
 const Layout = () => {
     const { user, logout, token } = useAuth();
+    const location = useLocation();
     const [overdueCount, setOverdueCount] = useState(0);
 
     useEffect(() => {
-        if (!token) return;
-        fetch(`${API_URL}/alerts/overdue/count`, { headers: { Authorization: `Bearer ${token}` } })
-            .then((response) => response.json())
-            .then((data) => setOverdueCount(data.count || 0))
-            .catch(() => setOverdueCount(0));
-    }, [token]);
+        if (!token) return undefined;
+
+        const loadCount = async () => {
+            try {
+                const data = await apiRequest("/alerts/overdue/count", { token });
+                setOverdueCount(data.count || 0);
+            } catch {
+                setOverdueCount(0);
+            }
+        };
+
+        loadCount();
+        window.addEventListener("overdue-alerts-changed", loadCount);
+
+        return () => {
+            window.removeEventListener("overdue-alerts-changed", loadCount);
+        };
+    }, [token, location.pathname]);
 
     const navLinkClass = ({ isActive }) =>
-        `block px-4 py-2.5 rounded-lg text-sm font-medium transition ${
-            isActive
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100"
+        `block rounded-lg px-4 py-2.5 text-sm font-medium transition ${
+            isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
         }`;
 
     return (
-        <div className="min-h-screen bg-slate-100 flex">
-            {/* Sidebar */}
-            <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
-                <div className="p-6 border-b border-slate-200">
-                    <h1 className="text-xl font-bold text-slate-900">
-                        Subscription Billing
-                    </h1>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                        Billing Management
-                    </p>
+        <div className="flex min-h-screen bg-slate-100">
+            <aside className="flex w-64 flex-col border-r border-slate-200 bg-white">
+                <div className="border-b border-slate-200 p-6">
+                    <h1 className="text-xl font-bold text-slate-900">Subscription Billing</h1>
+                    <p className="mt-1 text-xs text-slate-500">Billing Management</p>
                 </div>
 
-                <nav className="p-4 space-y-1">
-                    <NavLink
-                        to="/dashboard"
-                        className={navLinkClass}
-                    >
+                <nav className="space-y-1 p-4">
+                    <NavLink to="/dashboard" className={navLinkClass}>
                         <span className="flex items-center justify-between">
                             Dashboard
                             {overdueCount > 0 && (
@@ -51,46 +52,32 @@ const Layout = () => {
                             )}
                         </span>
                     </NavLink>
-
-                    <NavLink
-                        to="/subscriptions"
-                        className={navLinkClass}
-                    >
+                    <NavLink to="/subscriptions" className={navLinkClass}>
                         Subscriptions
                     </NavLink>
-
-                    <NavLink
-                        to="/invoices"
-                        className={navLinkClass}
-                    >
+                    <NavLink to="/invoices" className={navLinkClass}>
                         Invoices
                     </NavLink>
                 </nav>
 
-                <div className="mt-auto p-4 border-t border-slate-200">
+                <div className="mt-auto border-t border-slate-200 p-4">
                     <div className="mb-3">
-                        <p className="text-sm font-medium text-slate-900">
-                            {user?.name}
-                        </p>
-
-                        <p className="text-xs text-slate-500 mt-1">
-                            {user?.role === "billing_admin"
-                                ? "Billing Admin"
-                                : "Account Manager"}
+                        <p className="text-sm font-medium text-slate-900">{user?.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                            {user?.role === "billing_admin" ? "Billing Admin" : "Account Manager"}
                         </p>
                     </div>
-
                     <button
+                        type="button"
                         onClick={logout}
-                        className="w-full border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition"
+                        className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                     >
                         Logout
                     </button>
                 </div>
             </aside>
 
-            {/* Main content */}
-            <main className="flex-1 p-8">
+            <main className="flex-1 overflow-x-auto p-8">
                 <Outlet />
             </main>
         </div>

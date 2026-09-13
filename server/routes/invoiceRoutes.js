@@ -36,6 +36,14 @@ const router = express.Router();
 
 router.post("/", authenticateUser, createInvoice);
 router.get("/", authenticateUser, getInvoices);
+
+router.post(
+    "/generate-current-period",
+    authenticateUser,
+    authorizeRoles("billing_admin"),
+    generateCurrentPeriodInvoices
+);
+
 router.get("/:id", authenticateUser, getInvoice);
 
 router.put("/:id", authenticateUser, updateInvoiceDraft);
@@ -61,13 +69,6 @@ router.post(
     authenticateUser,
     authorizeRoles("billing_admin"),
     createCreditNote
-);
-
-router.post(
-    "/generate-current-period",
-    authenticateUser,
-    authorizeRoles("billing_admin"),
-    generateCurrentPeriodInvoices
 );
 
 module.exports = router;

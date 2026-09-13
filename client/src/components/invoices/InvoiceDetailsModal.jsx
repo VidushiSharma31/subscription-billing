@@ -3,9 +3,8 @@ import Modal from "../shared/Modal";
 import FormField from "../shared/FormField";
 import ActionButton from "../shared/ActionButton";
 import Detail from "../shared/Detail";
+import { API_URL } from "../../api";
 import { formatAmount, formatDate } from "../../utils/format";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const InvoiceDetailsModal = ({
     invoice,

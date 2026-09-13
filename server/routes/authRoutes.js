@@ -17,7 +17,6 @@ router.get(
     authenticateUser,
     (req, res) => {
         res.json({
-            message: "You are authenticated",
             user: req.user
         });
     }
@@ -28,17 +27,6 @@ router.get(
     authenticateUser,
     authorizeRoles("billing_admin"),
     getAccountManagers
-);
-
-router.get(
-    "/admin-test",
-    authenticateUser,
-    authorizeRoles("billing_admin"),
-    (req, res) => {
-        res.json({
-            message: "You are authorized as a Billing Admin"
-        });
-    }
 );
 
 module.exports = router;

@@ -1,77 +1,94 @@
-const { Parser } = require("json2csv");
 const Invoice = require("../models/Invoice");
 const CreditNote = require("../models/CreditNote");
+const InvoiceStatusHistory = require("../models/InvoiceStatusHistory");
 const { getReceivables } = require("../utils/receivables");
 const { getAccessibleSubscriptionIds } = require("../utils/reportAccess");
 const { isInvoiceOverdue } = require("../utils/invoiceStatus");
 
-const getReceivablesReport = async (req, res) => {
-    try {
-        const receivables = await getReceivables(req.user);
-        const revenueByWeek = new Map(revenueData.map((item) => [item._id, item.revenue]));
-        const completeRevenueData = [];
-        const weekCursor = new Date(now);
-        weekCursor.setHours(0, 0, 0, 0);
-        const day = weekCursor.getDay();
-        weekCursor.setDate(weekCursor.getDate() - day);
-        weekCursor.setDate(weekCursor.getDate() - 7 * 7);
+const startOfLocalDay = (date) => {
+    const value = new Date(date);
+    value.setHours(0, 0, 0, 0);
+    return value;
+};
 
-        for (let index = 0; index < 8; index += 1) {
-            const weekStart = new Date(weekCursor);
-            const isoWeek = weekStart.toISOString().slice(0, 10);
-            const thursday = new Date(weekStart);
-            thursday.setDate(thursday.getDate() + 4);
-            const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
-            const weekNumber = Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
-            const key = `${thursday.getUTCFullYear()}-W${String(weekNumber).padStart(2, "0")}`;
-            completeRevenueData.push({ _id: key, revenue: revenueByWeek.get(key) || 0 });
-            weekCursor.setDate(weekCursor.getDate() + 7);
-        }
+const isoWeekKey = (date) => {
+    const weekStart = startOfLocalDay(date);
+    const day = weekStart.getDay();
+    weekStart.setDate(weekStart.getDate() - day);
 
-        const totalReceivables = receivables.reduce((total, item) => total + item.outstandingAmount, 0);
-        const overdueReceivables = receivables.filter((item) => item.overdue)
-            .reduce((total, item) => total + item.outstandingAmount, 0);
+    const thursday = new Date(weekStart);
+    thursday.setDate(thursday.getDate() + 4);
 
-        res.json({ receivables, summary: { totalReceivables, overdueReceivables } });
-    } catch (error) {
-        console.error("Get receivables report error:", error);
-        res.status(500).json({ message: "Something went wrong" });
+    const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+    const weekNumber = Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
+
+    return `${thursday.getUTCFullYear()}-W${String(weekNumber).padStart(2, "0")}`;
+};
+
+const lastEightWeekKeys = (now = new Date()) => {
+    const weekCursor = startOfLocalDay(now);
+    const day = weekCursor.getDay();
+    weekCursor.setDate(weekCursor.getDate() - day);
+    weekCursor.setDate(weekCursor.getDate() - 7 * 7);
+
+    const keys = [];
+
+    for (let index = 0; index < 8; index += 1) {
+        keys.push(isoWeekKey(weekCursor));
+        weekCursor.setDate(weekCursor.getDate() + 7);
     }
+
+    return keys;
+};
+
+const toCsvValue = (value) => {
+    const text = value === undefined || value === null ? "" : String(value);
+
+    if (/[",\n]/.test(text)) {
+        return `"${text.replace(/"/g, "\"\"")}"`;
+    }
+
+    return text;
+};
+
+const toCsv = (rows, fields) => {
+    const header = fields.join(",");
+    const body = rows.map((row) => fields.map((field) => toCsvValue(row[field])).join(","));
+    return [header, ...body].join("\n");
 };
 
 const exportReceivables = async (req, res) => {
     try {
         const accessibleIds = await getAccessibleSubscriptionIds(req.user);
         const filter = { status: "issued" };
-        if (accessibleIds) filter.subscription = { $in: accessibleIds };
+
+        if (accessibleIds) {
+            filter.subscription = { $in: accessibleIds };
+        }
 
         const invoices = await Invoice.find(filter)
             .populate("subscription", "customerName billingEmail planName")
             .sort({ dueDate: 1 });
 
-        const creditNotes = await CreditNote.find({ invoice: { $in: invoices.map((invoice) => invoice._id) } });
-        const creditedByInvoice = new Map();
-        for (const note of creditNotes) {
-            creditedByInvoice.set(note.invoice.toString(), (creditedByInvoice.get(note.invoice.toString()) || 0) + note.amount);
-        }
+        const rows = invoices.map((invoice) => ({
+            subscription: invoice.subscription?.customerName || "",
+            billingEmail: invoice.subscription?.billingEmail || "",
+            plan: invoice.subscription?.planName || "",
+            amount: invoice.amount,
+            dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().slice(0, 10) : "",
+            status: invoice.status,
+            overdue: isInvoiceOverdue(invoice)
+        }));
 
-        const rows = invoices.map((invoice) => {
-            const totalCredited = creditedByInvoice.get(invoice._id.toString()) || 0;
-            return {
-                subscription: invoice.subscription?.customerName || "",
-                plan: invoice.subscription?.planName || "",
-                amount: invoice.amount,
-                dueDate: invoice.dueDate,
-                status: invoice.status,
-                overdue: isInvoiceOverdue(invoice),
-                outstandingAmount: Math.max(invoice.amount - totalCredited, 0)
-            };
-        });
-
-        const parser = new Parser({
-            fields: ["subscription", "plan", "amount", "dueDate", "status", "overdue", "outstandingAmount"]
-        });
-        const csv = parser.parse(rows);
+        const csv = toCsv(rows, [
+            "subscription",
+            "billingEmail",
+            "plan",
+            "amount",
+            "dueDate",
+            "status",
+            "overdue"
+        ]);
 
         res.setHeader("Content-Type", "text/csv");
         res.attachment("receivables.csv");
@@ -82,28 +99,37 @@ const exportReceivables = async (req, res) => {
     }
 };
 
+const sumHistoryAmounts = async (match, accessibleIds) => {
+    const history = await InvoiceStatusHistory.find(match).select("invoice");
+    const invoiceIds = history.map((item) => item.invoice);
+    const invoiceFilter = { _id: { $in: invoiceIds } };
+
+    if (accessibleIds) {
+        invoiceFilter.subscription = { $in: accessibleIds };
+    }
+
+    const invoices = await Invoice.find(invoiceFilter).select("amount");
+    return invoices.reduce((total, invoice) => total + invoice.amount, 0);
+};
+
 const getDashboardData = async (req, res) => {
     try {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const eightWeeksAgo = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000);
         const accessibleIds = await getAccessibleSubscriptionIds(req.user);
         const baseMatch = accessibleIds ? { subscription: { $in: accessibleIds } } : {};
 
-        const issuedMatch = {
-            ...baseMatch,
-            status: "issued",
-            createdAt: { $gte: startOfMonth, $lt: startOfNextMonth }
-        };
-        const paidMatch = {
-            ...baseMatch,
-            status: "paid",
-            updatedAt: { $gte: startOfMonth, $lt: startOfNextMonth }
-        };
-
-        const [issuedThisMonth, collectedThisMonth, receivables, statusBreakdown, planBreakdown, revenueData] = await Promise.all([
-            Invoice.aggregate([{ $match: issuedMatch }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
-            Invoice.aggregate([{ $match: paidMatch }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+        const [issuedThisMonth, collectedThisMonth, receivables, statusBreakdown, planBreakdown, paidHistory] = await Promise.all([
+            sumHistoryAmounts({
+                newStatus: "issued",
+                createdAt: { $gte: startOfMonth, $lt: startOfNextMonth }
+            }, accessibleIds),
+            sumHistoryAmounts({
+                newStatus: "paid",
+                createdAt: { $gte: startOfMonth, $lt: startOfNextMonth }
+            }, accessibleIds),
             getReceivables(req.user),
             Invoice.aggregate([
                 { $match: baseMatch },
@@ -117,51 +143,54 @@ const getDashboardData = async (req, res) => {
                 { $group: { _id: "$subscriptionDoc.planName", count: { $sum: 1 } } },
                 { $sort: { _id: 1 } }
             ]),
-            Invoice.aggregate([
-                {
-                    $match: {
-                        ...baseMatch,
-                        status: "paid",
-                        updatedAt: { $gte: new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000), $lte: now }
-                    }
-                },
-                {
-                    $group: {
-                        _id: { $dateToString: { format: "%G-W%V", date: "$updatedAt" } },
-                        revenue: { $sum: "$amount" }
-                    }
-                },
-                { $sort: { _id: 1 } }
-            ])
+            InvoiceStatusHistory.find({
+                newStatus: "paid",
+                createdAt: { $gte: eightWeeksAgo, $lte: now }
+            }).select("invoice createdAt")
         ]);
 
-        const revenueByWeek = new Map(revenueData.map((item) => [item._id, item.revenue]));
-        const completeRevenueData = [];
-        const weekCursor = new Date(now);
-        weekCursor.setHours(0, 0, 0, 0);
-        const day = weekCursor.getDay();
-        weekCursor.setDate(weekCursor.getDate() - day);
-        weekCursor.setDate(weekCursor.getDate() - 7 * 7);
+        const paidInvoiceIds = paidHistory.map((item) => item.invoice);
+        const paidInvoiceFilter = { _id: { $in: paidInvoiceIds } };
 
-        for (let index = 0; index < 8; index += 1) {
-            const weekStart = new Date(weekCursor);
-            const isoWeek = weekStart.toISOString().slice(0, 10);
-            const thursday = new Date(weekStart);
-            thursday.setDate(thursday.getDate() + 4);
-            const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
-            const weekNumber = Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
-            const key = `${thursday.getUTCFullYear()}-W${String(weekNumber).padStart(2, "0")}`;
-            completeRevenueData.push({ _id: key, revenue: revenueByWeek.get(key) || 0 });
-            weekCursor.setDate(weekCursor.getDate() + 7);
+        if (accessibleIds) {
+            paidInvoiceFilter.subscription = { $in: accessibleIds };
         }
 
-        const totalReceivables = receivables.reduce((total, item) => total + item.outstandingAmount, 0);
-        const overdueReceivables = receivables.filter((item) => item.overdue)
+        const paidInvoices = await Invoice.find(paidInvoiceFilter).select("amount");
+        const amountByInvoice = new Map(
+            paidInvoices.map((invoice) => [invoice._id.toString(), invoice.amount])
+        );
+
+        const revenueByWeek = new Map();
+
+        for (const item of paidHistory) {
+            if (!amountByInvoice.has(item.invoice.toString())) {
+                continue;
+            }
+
+            const key = isoWeekKey(item.createdAt);
+            revenueByWeek.set(
+                key,
+                (revenueByWeek.get(key) || 0) + amountByInvoice.get(item.invoice.toString())
+            );
+        }
+
+        const completeRevenueData = lastEightWeekKeys(now).map((key) => ({
+            _id: key,
+            revenue: revenueByWeek.get(key) || 0
+        }));
+
+        const totalReceivables = receivables.reduce(
+            (total, item) => total + item.outstandingAmount,
+            0
+        );
+        const overdueReceivables = receivables
+            .filter((item) => item.overdue)
             .reduce((total, item) => total + item.outstandingAmount, 0);
 
         res.json({
-            issuedThisMonth: issuedThisMonth[0]?.total || 0,
-            collectedThisMonth: collectedThisMonth[0]?.total || 0,
+            issuedThisMonth,
+            collectedThisMonth,
             receivables: totalReceivables,
             overdueReceivables,
             statusBreakdown,
@@ -174,4 +203,4 @@ const getDashboardData = async (req, res) => {
     }
 };
 
-module.exports = { getReceivablesReport, exportReceivables, getDashboardData };
+module.exports = { exportReceivables, getDashboardData };

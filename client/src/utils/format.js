@@ -14,6 +14,24 @@ export const formatDate = (date) => {
     });
 };
 
+export const formatDateTime = (date) => {
+    if (!date) return "—";
+
+    const parsed = new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+        return "—";
+    }
+
+    return parsed.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+};
+
 export const formatAmount = (amount) => {
     const value = Number(amount);
 

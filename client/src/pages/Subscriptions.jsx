@@ -1,171 +1,54 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const API_URL = "http://localhost:5000/api";
-
-const formatDate = (date) => {
-    if (!date) return "—";
-
-    return new Date(date).toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short"
-    });
-};
-
-const actionLabels = {
-    created: "Subscription created",
-    updated: "Subscription updated",
-    archived: "Subscription archived",
-    restored: "Subscription restored",
-    collaborators_updated: "Collaborators updated"
-};
-
-const AuditModal = ({ subscription, token, onClose }) => {
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-
-    useEffect(() => {
-        const fetchAudit = async () => {
-            try {
-                const response = await fetch(
-                    `${API_URL}/subscriptions/${subscription._id}/audit`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`
-                        }
-                    }
-                );
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    setError(data.message || "Failed to load audit history");
-                    return;
-                }
-
-                setEvents(data.events || []);
-            } catch (error) {
-                setError("Unable to connect to server");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchAudit();
-    }, [subscription._id, token]);
-
-    return (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-                <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-lg font-semibold text-slate-900">
-                            Subscription Audit History
-                        </h2>
-                        <p className="text-sm text-slate-500 mt-1">
-                            {subscription.customerName} · {subscription.planName}
-                        </p>
-                    </div>
-
-                    <button
-                        onClick={onClose}
-                        className="text-slate-500 hover:text-slate-900 text-xl"
-                    >
-                        ×
-                    </button>
-                </div>
-
-                <div className="overflow-y-auto p-6">
-                    {loading && (
-                        <p className="text-slate-500">Loading audit history...</p>
-                    )}
-
-                    {error && (
-                        <p className="text-red-600">{error}</p>
-                    )}
-
-                    {!loading && !error && events.length === 0 && (
-                        <div className="text-center py-10">
-                            <p className="text-slate-500">No events to audit yet.</p>
-                            <p className="text-sm text-slate-400 mt-1">
-                                New subscription actions will appear here.
-                            </p>
-                        </div>
-                    )}
-
-                    {!loading && !error && events.length > 0 && (
-                        <div className="space-y-5">
-                            {events.map((event) => (
-                                <div
-                                    key={event._id}
-                                    className="relative pl-6 border-l-2 border-slate-200"
-                                >
-                                    <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-slate-900" />
-
-                                    <p className="font-medium text-slate-900">
-                                        {actionLabels[event.action] || event.action}
-                                    </p>
-
-                                    <p className="text-sm text-slate-500 mt-1">
-                                        {event.details || "No additional details."}
-                                    </p>
-
-                                    <p className="text-xs text-slate-400 mt-2">
-                                        {formatDate(event.createdAt)} · by {event.performedBy?.name || "Unknown user"}
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <div className="px-6 py-4 border-t border-slate-200 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
+import { apiRequest } from "../api";
+import { formatAmount } from "../utils/format";
+import SubscriptionAuditModal from "../components/subscriptions/SubscriptionAuditModal";
+import SubscriptionFormModal from "../components/subscriptions/SubscriptionFormModal";
+import CollaboratorsModal from "../components/subscriptions/CollaboratorsModal";
 
 const Subscriptions = () => {
     const { token, user } = useAuth();
+    const isAdmin = user?.role === "billing_admin";
 
     const [subscriptions, setSubscriptions] = useState([]);
+    const [accountManagers, setAccountManagers] = useState([]);
+    const [pagination, setPagination] = useState({
+        page: 1,
+        limit: 10,
+        total: 0,
+        totalPages: 0
+    });
+    const [page, setPage] = useState(1);
+    const [statusFilter, setStatusFilter] = useState("");
+    const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [actionLoading, setActionLoading] = useState("");
     const [auditSubscription, setAuditSubscription] = useState(null);
+    const [formSubscription, setFormSubscription] = useState(undefined);
+    const [collaboratorSubscription, setCollaboratorSubscription] = useState(null);
+    const [notice, setNotice] = useState("");
 
     const fetchSubscriptions = async () => {
         try {
             setLoading(true);
+            const params = new URLSearchParams({
+                page: String(page),
+                limit: "10",
+                sortBy: "createdAt",
+                sortOrder: "desc"
+            });
 
-            const response = await fetch(
-                `${API_URL}/subscriptions`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
+            if (statusFilter) params.set("status", statusFilter);
+            if (search.trim()) params.set("search", search.trim());
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                setError(data.message || "Failed to fetch subscriptions");
-                return;
-            }
-
+            const data = await apiRequest(`/subscriptions?${params.toString()}`, { token });
             setSubscriptions(data.subscriptions || []);
+            setPagination(data.pagination || pagination);
             setError("");
-        } catch (error) {
-            setError("Unable to connect to server");
+        } catch (err) {
+            setError(err.message);
         } finally {
             setLoading(false);
         }
@@ -173,163 +56,273 @@ const Subscriptions = () => {
 
     useEffect(() => {
         fetchSubscriptions();
-    }, [token]);
+    }, [token, page, statusFilter]);
+
+    useEffect(() => {
+        const loadManagers = async () => {
+            if (!isAdmin) {
+                setAccountManagers([]);
+                return;
+            }
+
+            try {
+                const data = await apiRequest("/auth/account-managers", { token });
+                setAccountManagers(data.accountManagers || []);
+            } catch (err) {
+                setError(err.message);
+            }
+        };
+
+        loadManagers();
+    }, [token, isAdmin]);
 
     const handleArchiveRestore = async (subscription) => {
         const isArchived = subscription.status === "archived";
         const action = isArchived ? "restore" : "archive";
-        const actionLabel = isArchived ? "restore" : "archive";
 
-        if (!window.confirm(`Are you sure you want to ${actionLabel} this subscription?`)) {
+        if (!window.confirm(`Are you sure you want to ${action} this subscription?`)) {
             return;
         }
 
         try {
             setActionLoading(subscription._id);
-
-            const response = await fetch(
-                `${API_URL}/subscriptions/${subscription._id}/${action}`,
-                {
-                    method: "PATCH",
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                alert(data.message || `Failed to ${actionLabel} subscription`);
-                return;
-            }
-
+            await apiRequest(`/subscriptions/${subscription._id}/${action}`, {
+                token,
+                method: "PATCH"
+            });
+            setNotice(isArchived
+                ? "Subscription restored. It can generate invoices again."
+                : "Subscription archived. Future invoice generation is stopped.");
             await fetchSubscriptions();
-        } catch (error) {
-            alert("Unable to connect to server");
+        } catch (err) {
+            setError(err.message);
         } finally {
             setActionLoading("");
         }
     };
 
-    if (loading) {
-        return <p>Loading subscriptions...</p>;
-    }
-
-    if (error) {
-        return (
-            <div>
-                <h1 className="text-2xl font-bold text-slate-900">
-                    Subscriptions
-                </h1>
-                <p className="text-red-600 mt-4">{error}</p>
-            </div>
-        );
-    }
-
     return (
         <div>
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-slate-900">
-                    Subscriptions
-                </h1>
-                <p className="text-slate-500 mt-1">
-                    Manage customer subscriptions
-                </p>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">Subscriptions</h1>
+                    <p className="mt-1 text-slate-500">Manage customer subscriptions</p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => setFormSubscription(null)}
+                    className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                    Create subscription
+                </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Customer</th>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Plan</th>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Billing Cycle</th>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Price</th>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Owner</th>
-                            <th className="px-6 py-4 font-semibold text-slate-700">Collaborators</th>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Status</th>
-                            <th className="text-left px-6 py-3 text-sm font-medium text-slate-600">Actions</th>
-                        </tr>
-                    </thead>
+            <div className="mb-4 flex flex-wrap gap-3">
+                <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                            setPage(1);
+                            fetchSubscriptions();
+                        }
+                    }}
+                    placeholder="Search customer, email, or plan"
+                    className="form-input max-w-sm"
+                />
+                <select
+                    value={statusFilter}
+                    onChange={(event) => {
+                        setPage(1);
+                        setStatusFilter(event.target.value);
+                    }}
+                    className="form-input max-w-xs"
+                >
+                    <option value="">All statuses</option>
+                    <option value="active">Active</option>
+                    <option value="archived">Archived</option>
+                </select>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setPage(1);
+                        fetchSubscriptions();
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                >
+                    Search
+                </button>
+            </div>
 
-                    <tbody>
-                        {subscriptions.map((subscription) => (
-                            <tr
-                                key={subscription._id}
-                                className="border-b border-slate-100 last:border-0"
-                            >
-                                <td className="px-6 py-4">
-                                    <p className="font-medium text-slate-900">{subscription.customerName}</p>
-                                    <p className="text-sm text-slate-500">{subscription.billingEmail}</p>
-                                </td>
+            {notice && <p className="mb-4 text-sm text-green-700">{notice}</p>}
+            {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+            {loading && <p className="mb-4 text-sm text-slate-500">Loading subscriptions...</p>}
 
-                                <td className="px-6 py-4 text-slate-700">{subscription.planName}</td>
-                                <td className="px-6 py-4 text-slate-700 capitalize">{subscription.billingCycle}</td>
-                                <td className="px-6 py-4 text-slate-700">₹{subscription.price}</td>
-                                <td className="px-6 py-4 text-slate-700">{subscription.owner?.name}</td>
-
-                                <td className="px-6 py-4">
-                                    {subscription.collaborators?.length > 0 ? (
-                                        <div className="space-y-1">
-                                            {subscription.collaborators.map((collaborator) => (
-                                                <div key={collaborator._id} className="text-slate-700">
-                                                    {collaborator.name}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <span className="text-slate-400">—</span>
-                                    )}
-                                </td>
-
-                                <td className="px-6 py-4">
-                                    <span
-                                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                                            subscription.status === "active"
-                                                ? "bg-green-100 text-green-700"
-                                                : "bg-slate-100 text-slate-600"
-                                        }`}
-                                    >
-                                        {subscription.status}
-                                    </span>
-                                </td>
-
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-2">
-                                        <button
-                                            onClick={() => setAuditSubscription(subscription)}
-                                            className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                        >
-                                            Audit
-                                        </button>
-
-                                        {user?.role === "billing_admin" && (
-                                            <button
-                                                onClick={() => handleArchiveRestore(subscription)}
-                                                disabled={actionLoading === subscription._id}
-                                                className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                                            >
-                                                {actionLoading === subscription._id
-                                                    ? "Saving..."
-                                                    : subscription.status === "archived"
-                                                        ? "Restore"
-                                                        : "Archive"}
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="border-b border-slate-200 bg-slate-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Customer</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Plan</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Cycle</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Price</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Owner</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Collaborators</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Status</th>
+                                <th className="px-6 py-3 text-left text-sm font-medium text-slate-600">Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {!loading && subscriptions.length === 0 && (
+                                <tr>
+                                    <td colSpan="8" className="px-6 py-10 text-center text-slate-500">
+                                        No subscriptions found.
+                                    </td>
+                                </tr>
+                            )}
+
+                            {subscriptions.map((subscription) => (
+                                <tr key={subscription._id} className="border-b border-slate-100 last:border-0">
+                                    <td className="px-6 py-4">
+                                        <p className="font-medium text-slate-900">{subscription.customerName}</p>
+                                        <p className="text-sm text-slate-500">{subscription.billingEmail}</p>
+                                    </td>
+                                    <td className="px-6 py-4 text-slate-700">{subscription.planName}</td>
+                                    <td className="px-6 py-4 capitalize text-slate-700">{subscription.billingCycle}</td>
+                                    <td className="px-6 py-4 text-slate-700">{formatAmount(subscription.price)}</td>
+                                    <td className="px-6 py-4 text-slate-700">{subscription.owner?.name}</td>
+                                    <td className="px-6 py-4 text-slate-700">
+                                        {subscription.collaborators?.length
+                                            ? subscription.collaborators.map((item) => item.name).join(", ")
+                                            : "—"}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span
+                                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                                subscription.status === "active"
+                                                    ? "bg-green-100 text-green-700"
+                                                    : "bg-slate-100 text-slate-600"
+                                            }`}
+                                        >
+                                            {subscription.status}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormSubscription(subscription)}
+                                                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAuditSubscription(subscription)}
+                                                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Audit
+                                            </button>
+                                            <Link
+                                                to={`/invoices?subscription=${subscription._id}`}
+                                                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Invoices
+                                            </Link>
+                                            {isAdmin && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCollaboratorSubscription(subscription)}
+                                                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                                >
+                                                    Collaborators
+                                                </button>
+                                            )}
+                                            {isAdmin && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleArchiveRestore(subscription)}
+                                                    disabled={actionLoading === subscription._id}
+                                                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                >
+                                                    {actionLoading === subscription._id
+                                                        ? "Saving..."
+                                                        : subscription.status === "archived"
+                                                            ? "Restore"
+                                                            : "Archive"}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
+            {pagination.totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between">
+                    <p className="text-sm text-slate-500">
+                        Page {pagination.page} of {pagination.totalPages}
+                    </p>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            disabled={page === 1}
+                            onClick={() => setPage((current) => Math.max(current - 1, 1))}
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm disabled:opacity-40"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            type="button"
+                            disabled={page === pagination.totalPages}
+                            onClick={() => setPage((current) => current + 1)}
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm disabled:opacity-40"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {auditSubscription && (
-                <AuditModal
+                <SubscriptionAuditModal
                     subscription={auditSubscription}
                     token={token}
                     onClose={() => setAuditSubscription(null)}
+                />
+            )}
+
+            {formSubscription !== undefined && (
+                <SubscriptionFormModal
+                    token={token}
+                    user={user}
+                    accountManagers={accountManagers}
+                    subscription={formSubscription}
+                    onClose={() => setFormSubscription(undefined)}
+                    onSaved={async () => {
+                        setFormSubscription(undefined);
+                        setNotice(formSubscription ? "Subscription updated." : "Subscription created.");
+                        await fetchSubscriptions();
+                    }}
+                />
+            )}
+
+            {collaboratorSubscription && (
+                <CollaboratorsModal
+                    token={token}
+                    subscription={collaboratorSubscription}
+                    accountManagers={accountManagers}
+                    onClose={() => setCollaboratorSubscription(null)}
+                    onSaved={async () => {
+                        setCollaboratorSubscription(null);
+                        setNotice("Collaborators updated.");
+                        await fetchSubscriptions();
+                    }}
                 />
             )}
         </div>

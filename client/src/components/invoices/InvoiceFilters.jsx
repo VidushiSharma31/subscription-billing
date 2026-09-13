@@ -211,6 +211,10 @@ const InvoiceFilters = ({
                         <option value="periodEnd">
                             Period End
                         </option>
+
+                        <option value="status">
+                            Status
+                        </option>
                     </select>
 
 

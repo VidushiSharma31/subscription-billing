@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { formatAmount, formatDate } from "../utils/format";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+import { apiRequest } from "../api";
 
 const Dashboard = () => {
     const { token, user } = useAuth();
@@ -15,25 +14,10 @@ const Dashboard = () => {
         try {
             setLoading(true);
             setError("");
-            const [dashboardResponse, alertResponse] = await Promise.all([
-                fetch(`${API_URL}/reports/dashboard`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                }),
-                fetch(`${API_URL}/alerts/overdue`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+            const [dashboardData, alertData] = await Promise.all([
+                apiRequest("/reports/dashboard", { token }),
+                apiRequest("/alerts/overdue", { token })
             ]);
-
-            const dashboardData = await dashboardResponse.json();
-            const alertData = await alertResponse.json();
-
-            if (!dashboardResponse.ok) {
-                throw new Error(dashboardData.message || "Failed to load dashboard");
-            }
-
-            if (!alertResponse.ok) {
-                throw new Error(alertData.message || "Failed to load alerts");
-            }
 
             setData(dashboardData);
             setAlerts(alertData.alerts || []);
@@ -53,13 +37,12 @@ const Dashboard = () => {
 
     const dismissAlert = async (id) => {
         try {
-            const response = await fetch(`${API_URL}/alerts/overdue/${id}/dismiss`, {
+            await apiRequest(`/alerts/overdue/${id}/dismiss`, {
                 method: "PATCH",
-                headers: { Authorization: `Bearer ${token}` }
+                token
             });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || "Failed to dismiss alert");
             setAlerts((current) => current.filter((alert) => alert._id !== id));
+            window.dispatchEvent(new Event("overdue-alerts-changed"));
         } catch (err) {
             setError(err.message);
         }

@@ -1,17 +1,7 @@
 const Invoice = require("../models/Invoice");
 const OverdueAlert = require("../models/OverdueAlert");
-const Subscription = require("../models/Subscription");
-const { isInvoiceOverdue } = require("../utils/invoiceStatus");
-
-const getAccessibleSubscriptionIds = async (user) => {
-    if (user.role === "billing_admin") return null;
-
-    const subscriptions = await Subscription.find({
-        $or: [{ owner: user.userId }, { collaborators: user.userId }]
-    }).select("_id");
-
-    return subscriptions.map((item) => item._id);
-};
+const { getAccessibleSubscriptionIds } = require("../utils/reportAccess");
+const { getAccessibleInvoice } = require("../utils/invoiceAccess");
 
 const syncOverdueAlerts = async (user) => {
     const accessibleIds = await getAccessibleSubscriptionIds(user);
@@ -91,7 +81,17 @@ const dismissOverdueAlert = async (req, res) => {
             populate: { path: "subscription", select: "owner collaborators" }
         });
 
-        if (!alert) return res.status(404).json({ message: "Alert not found" });
+        if (!alert) {
+            return res.status(404).json({ message: "Alert not found" });
+        }
+
+        const invoice = await getAccessibleInvoice(alert.invoice._id, req.user);
+
+        if (!invoice) {
+            return res.status(403).json({
+                message: "You do not have permission to dismiss this alert"
+            });
+        }
 
         alert.dismissedAt = new Date();
         alert.dismissedBy = req.user.userId;
