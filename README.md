@@ -228,6 +228,7 @@ Password: manager123
 ```text
 Email: manager2@example.com
 Password: manager456
+```
 
 ## Assignment Coverage
 
